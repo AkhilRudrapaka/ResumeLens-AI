@@ -17,22 +17,114 @@ class ResumeEvaluatorPipeline:
         self.role_profile = get_role_profile(self.role_name)
 
     def extract_jd_keywords(self) -> List[str]:
-        """Extracts technical and domain keywords from user-provided Job Description."""
-        if not self.job_description:
-            return self.role_profile["ats_keywords"]
-        
-        # Tokenize JD and extract technical terms
-        words = re.findall(r"\b[A-Za-z0-9\.#\+-]{3,20}\b", self.job_description)
-        stopwords = set(["the", "and", "for", "with", "that", "this", "from", "have", "your", "will", "our", "team", "role", "work", "experience", "years", "candidate", "must", "able", "skills", "ability"])
-        
-        extracted = []
+        """
+        Extracts subject-oriented domain and technical keywords from Job Description.
+        Filters out generic filler/boilerplate words (e.g. 'about', 'company', 'looking', 'hire', 'its', 'are').
+        Prioritizes technical skills, tools, frameworks, engineering domains, and role-specific subject terms.
+        """
+        if not self.job_description or len(self.job_description.strip()) < 10:
+            return self.role_profile.get("ats_keywords", [])
+
+        jd_text = self.job_description
+        jd_lower = jd_text.lower()
+
+        # Stopwords & generic JD boilerplate terms to strictly filter out
+        stopwords = {
+            "about", "above", "across", "after", "again", "against", "all", "almost", "alone", "along", "already",
+            "also", "although", "always", "among", "an", "and", "another", "any", "anybody", "anyone", "anything",
+            "anywhere", "are", "area", "around", "as", "at", "be", "because", "been", "before", "being", "below",
+            "between", "both", "but", "by", "can", "cannot", "could", "did", "do", "does", "doing", "done", "down",
+            "during", "each", "either", "else", "every", "everybody", "everyone", "everything", "everywhere", "few",
+            "for", "from", "further", "had", "has", "have", "having", "he", "her", "here", "hers", "herself", "him",
+            "himself", "his", "how", "i", "if", "in", "into", "is", "it", "its", "itself", "just", "know", "like",
+            "make", "many", "may", "me", "might", "more", "most", "much", "must", "my", "myself", "no", "nor", "not",
+            "now", "of", "off", "on", "once", "one", "only", "or", "other", "our", "ours", "ourselves", "out", "over",
+            "own", "same", "she", "should", "so", "some", "somebody", "someone", "something", "somewhere", "still",
+            "such", "than", "that", "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they",
+            "this", "those", "through", "to", "too", "under", "until", "up", "very", "was", "we", "well", "were",
+            "what", "when", "where", "which", "while", "who", "whom", "whose", "why", "will", "with", "within",
+            "without", "would", "you", "your", "yours", "yourself", "yourselves",
+            # HR / JD Boilerplate Words
+            "job", "jobs", "description", "details", "role", "roles", "position", "positions", "title", "company",
+            "companies", "organization", "firm", "inc", "ltd", "corp", "llc", "global", "national", "international",
+            "product-based", "service-based", "startup", "center", "centre", "office", "headquarters", "location",
+            "located", "city", "country", "region", "team", "teams", "department", "unit", "group", "work", "working",
+            "workplace", "environment", "culture", "fast-paced", "growing", "looking", "look", "hire", "hiring",
+            "hired", "seek", "seeking", "seeks", "search", "searching", "join", "joining", "bring", "brings", "help",
+            "helps", "building", "deliver", "delivering", "opportunity", "opportunities", "candidate", "candidates",
+            "applicant", "applicants", "individual", "individuals", "person", "people", "talented", "talent",
+            "passionate", "motivated", "driven", "dynamic", "ideal", "successful", "experienced",
+            "years", "year", "month", "months", "full-time", "part-time", "contract", "remote", "hybrid", "onsite",
+            "relocation", "salary", "pay", "compensation", "benefits", "perks", "equal", "employer", "employment",
+            "responsibilities", "responsibility", "requirements", "requirement", "qualification", "qualifications",
+            "preferred", "preference", "plus", "need", "needed", "needs", "ability", "abilities", "able",
+            "skill", "skills", "knowledge", "understanding", "strong", "great", "good", "excellent", "proven",
+            "track", "record", "background", "experience", "experiences", "expert", "expertise", "proficient",
+            "proficiency", "familiar", "familiarity", "hands-on", "daily", "day-to-day", "task", "tasks", "duty",
+            "duties", "summary", "overview", "us", "offer", "offers",
+            # Locations / Cities
+            "chennai", "bangalore", "bengaluru", "hyderabad", "mumbai", "pune", "delhi", "noida", "gurgaon", "gurugram",
+            "kolkata", "ahmedabad", "san", "francisco", "york", "london", "singapore", "berlin", "austin", "seattle",
+            "india", "usa", "uk", "canada", "germany"
+        }
+
+        extracted: List[str] = []
+
+        # 1. Match known technical terms & multi-word subject phrases from role profile & tech dictionary
+        known_subjects = set()
+        for sk in (
+            self.role_profile.get("required_skills", []) +
+            self.role_profile.get("preferred_skills", []) +
+            self.role_profile.get("ats_keywords", []) +
+            self.role_profile.get("expected_technologies", [])
+        ):
+            known_subjects.add(sk.lower())
+
+        common_tech = [
+            "python", "java", "javascript", "typescript", "c++", "c#", "go", "golang", "rust", "ruby", "php", "swift", "kotlin",
+            "react", "react.js", "next.js", "node.js", "express", "fastapi", "django", "flask", "spring boot", "angular", "vue",
+            "sql", "postgresql", "mysql", "mongodb", "redis", "elasticsearch", "docker", "kubernetes", "aws", "azure", "gcp",
+            "git", "ci/cd", "terraform", "graphql", "rest api", "restful api", "rest", "microservices", "system design",
+            "data structures", "algorithms", "unit testing", "integration testing", "automation", "devops", "cloud",
+            "machine learning", "deep learning", "ai", "llm", "rag", "natural language processing", "nlp", "computer vision",
+            "data pipeline", "etl", "spark", "hadoop", "airflow", "kafka", "full stack", "frontend", "backend", "security",
+            "concurrency", "async", "scalability", "architecture", "engineering", "agile", "scrum", "oop", "object-oriented"
+        ]
+        for t in common_tech:
+            known_subjects.add(t.lower())
+
+        for subject in known_subjects:
+            pattern = r"\b" + re.escape(subject) + r"\b"
+            if re.search(pattern, jd_lower):
+                match = re.search(pattern, jd_text, re.IGNORECASE)
+                val = match.group(0) if match else subject
+                if val.lower() not in [x.lower() for x in extracted]:
+                    extracted.append(val)
+
+        # 2. Extract remaining single-word technical/subject tokens that are not generic stopwords
+        words = re.findall(r"\b[A-Za-z0-9\.#\+-]{3,20}\b", jd_text)
         for w in words:
             w_clean = w.strip()
             if w_clean.lower() not in stopwords and len(w_clean) >= 3:
                 if w_clean.lower() not in [x.lower() for x in extracted]:
                     extracted.append(w_clean)
-        
-        return extracted[:15] if extracted else self.role_profile["ats_keywords"]
+
+        # Fallback to role profile keywords if JD provides very few subject terms
+        if len(extracted) < 5:
+            for fallback_kw in self.role_profile.get("ats_keywords", []):
+                if fallback_kw.lower() not in [x.lower() for x in extracted]:
+                    extracted.append(fallback_kw)
+
+        # 3. Deduplicate redundant sub-phrases (e.g. if 'REST APIs' is present, skip standalone 'REST' or 'APIs')
+        final_extracted: List[str] = []
+        extracted_sorted = sorted(extracted, key=lambda x: len(x), reverse=True)
+        for term in extracted_sorted:
+            term_lower = term.lower()
+            if any(term_lower != existing.lower() and term_lower in existing.lower() for existing in final_extracted):
+                continue
+            final_extracted.append(term)
+
+        return final_extracted[:15]
 
     def run_all_evaluators(self) -> Dict[str, Any]:
         """Runs evaluators 1 through 15 and returns structured complete report."""

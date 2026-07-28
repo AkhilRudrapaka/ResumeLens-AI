@@ -325,6 +325,10 @@ Please read the [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines on 
 ---
 
 
-## License
+## License & Attribution
 
-[MIT](https://github.com/interviewstreet/hiring-agent/blob/master/LICENSE) © HackerRank
+This project is open-source software released under the [MIT License](./LICENSE).
+
+- **Original Project & Author:** Built on / derived from [HackerRank Hiring Agent](https://github.com/interviewstreet/hiring-agent) by HackerRank (Interviewstreet, Inc.).
+- **Copyright:** Copyright (c) 2025 HackerRank. See the [LICENSE](./LICENSE) and [NOTICE](./NOTICE) files for full licensing terms and legal notices.
+

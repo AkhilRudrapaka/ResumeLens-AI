@@ -79,23 +79,96 @@ export function evaluateResumeClient(
     atsFixes.push("Include your phone number in standard format.");
   }
 
-  // Extract Job Description keywords if provided
+  // Extract Job Description keywords if provided (subject-oriented filtering)
   let jdFound: string[] = [];
   let jdMissing: string[] = [];
   let jdCoveragePct = 100;
 
   if (jobDescription && jobDescription.trim().length > 10) {
-    const rawTokens = jobDescription.match(/\b[A-Za-z0-9\.#\+-]{3,20}\b/g) || [];
-    const stopwords = new Set(["the", "and", "for", "with", "that", "this", "from", "have", "your", "will", "our", "team", "role", "work", "experience", "years", "candidate", "must", "able", "skills", "ability"]);
-    
-    const uniqueTokens: string[] = [];
-    for (const tok of rawTokens) {
-      if (!stopwords.has(tok.toLowerCase()) && !uniqueTokens.map(u => u.toLowerCase()).includes(tok.toLowerCase())) {
-        uniqueTokens.push(tok);
+    const jdLower = jobDescription.toLowerCase();
+    const stopwords = new Set([
+      "about", "above", "across", "after", "again", "against", "all", "almost", "alone", "along", "already",
+      "also", "although", "always", "among", "an", "and", "another", "any", "anybody", "anyone", "anything",
+      "anywhere", "are", "area", "around", "as", "at", "be", "because", "been", "before", "being", "below",
+      "between", "both", "but", "by", "can", "cannot", "could", "did", "do", "does", "doing", "done", "down",
+      "during", "each", "either", "else", "every", "everybody", "everyone", "everything", "everywhere", "few",
+      "for", "from", "further", "had", "has", "have", "having", "he", "her", "here", "hers", "herself", "him",
+      "himself", "his", "how", "i", "if", "in", "into", "is", "it", "its", "itself", "just", "know", "like",
+      "make", "many", "may", "me", "might", "more", "most", "much", "must", "my", "myself", "no", "nor", "not",
+      "now", "of", "off", "on", "once", "one", "only", "or", "other", "our", "ours", "ourselves", "out", "over",
+      "own", "same", "she", "should", "so", "some", "somebody", "someone", "something", "somewhere", "still",
+      "such", "than", "that", "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they",
+      "this", "those", "through", "to", "too", "under", "until", "up", "very", "was", "we", "well", "were",
+      "what", "when", "where", "which", "while", "who", "whom", "whose", "why", "will", "with", "within",
+      "without", "would", "you", "your", "yours", "yourself", "yourselves",
+      "job", "jobs", "description", "details", "role", "roles", "position", "positions", "title", "company",
+      "companies", "organization", "firm", "inc", "ltd", "corp", "llc", "global", "national", "international",
+      "product-based", "service-based", "startup", "center", "centre", "office", "headquarters", "location",
+      "located", "city", "country", "region", "team", "teams", "department", "unit", "group", "work", "working",
+      "workplace", "environment", "culture", "fast-paced", "growing", "looking", "look", "hire", "hiring",
+      "hired", "seek", "seeking", "seeks", "search", "searching", "join", "joining", "bring", "brings", "help",
+      "helps", "building", "deliver", "delivering", "opportunity", "opportunities", "candidate", "candidates",
+      "applicant", "applicants", "individual", "individuals", "person", "people", "talented", "talent",
+      "passionate", "motivated", "driven", "dynamic", "ideal", "successful", "experienced",
+      "years", "year", "month", "months", "full-time", "part-time", "contract", "remote", "hybrid", "onsite",
+      "relocation", "salary", "pay", "compensation", "benefits", "perks", "equal", "employer", "employment",
+      "responsibilities", "responsibility", "requirements", "requirement", "qualification", "qualifications",
+      "preferred", "preference", "plus", "need", "needed", "needs", "ability", "abilities", "able",
+      "skill", "skills", "knowledge", "understanding", "strong", "great", "good", "excellent", "proven",
+      "track", "record", "background", "experience", "experiences", "expert", "expertise", "proficient",
+      "proficiency", "familiar", "familiarity", "hands-on", "daily", "day-to-day", "task", "tasks", "duty",
+      "duties", "summary", "overview", "us", "offer", "offers",
+      "chennai", "bangalore", "bengaluru", "hyderabad", "mumbai", "pune", "delhi", "noida", "gurgaon", "gurugram",
+      "kolkata", "ahmedabad", "san", "francisco", "york", "london", "singapore", "berlin", "austin", "seattle",
+      "india", "usa", "uk", "canada", "germany"
+    ]);
+
+    const extracted: string[] = [];
+
+    // 1. Recognize known subject terms from role profile and technical stack
+    const knownSubjects = new Set([
+      ...required.map(s => s.toLowerCase()),
+      ...preferred.map(s => s.toLowerCase()),
+      "python", "java", "javascript", "typescript", "c++", "c#", "go", "golang", "rust", "ruby", "php", "swift", "kotlin",
+      "react", "react.js", "next.js", "node.js", "express", "fastapi", "django", "flask", "spring boot", "angular", "vue",
+      "sql", "postgresql", "mysql", "mongodb", "redis", "elasticsearch", "docker", "kubernetes", "aws", "azure", "gcp",
+      "git", "ci/cd", "terraform", "graphql", "rest api", "restful api", "rest", "microservices", "system design",
+      "data structures", "algorithms", "unit testing", "integration testing", "automation", "devops", "cloud",
+      "machine learning", "deep learning", "ai", "llm", "rag", "natural language processing", "nlp", "computer vision",
+      "data pipeline", "etl", "spark", "hadoop", "airflow", "kafka", "full stack", "frontend", "backend", "security",
+      "concurrency", "async", "scalability", "architecture", "engineering", "agile", "scrum", "oop", "object-oriented"
+    ]);
+
+    for (const subject of knownSubjects) {
+      if (jdLower.includes(subject)) {
+        if (!extracted.some(e => e.toLowerCase() === subject)) {
+          extracted.push(subject);
+        }
       }
     }
-    const targetJdKeywords = uniqueTokens.slice(0, 15);
 
+    // 2. Extract remaining non-boilerplate tokens
+    const rawTokens = jobDescription.match(/\b[A-Za-z0-9\.#\+-]{3,20}\b/g) || [];
+    for (const tok of rawTokens) {
+      const tokClean = tok.trim();
+      if (!stopwords.has(tokClean.toLowerCase()) && tokClean.length >= 3) {
+        if (!extracted.some(u => u.toLowerCase() === tokClean.toLowerCase())) {
+          extracted.push(tokClean);
+        }
+      }
+    }
+
+    // 3. Deduplicate sub-phrases
+    const finalExtracted: string[] = [];
+    const extractedSorted = [...extracted].sort((a, b) => b.length - a.length);
+    for (const term of extractedSorted) {
+      const termLower = term.toLowerCase();
+      if (!finalExtracted.some(existing => existing.toLowerCase() !== termLower && existing.toLowerCase().includes(termLower))) {
+        finalExtracted.push(term);
+      }
+    }
+
+    const targetJdKeywords = finalExtracted.slice(0, 15);
     jdFound = targetJdKeywords.filter(k => textLower.includes(k.toLowerCase()));
     jdMissing = targetJdKeywords.filter(k => !jdFound.includes(k));
     jdCoveragePct = Math.round((jdFound.length / Math.max(1, targetJdKeywords.length)) * 100);
