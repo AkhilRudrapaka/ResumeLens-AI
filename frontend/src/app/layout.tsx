@@ -8,6 +8,11 @@ export const metadata: Metadata = {
   title: "ResumeLens AI — Know Your Resume Before Recruiters Do",
   description: "AI-Powered Recruiter & ATS Resume Evaluation Platform. Screen your resume against 24+ tech hiring benchmarks with 15 evaluators, recruiter simulation, and interview readiness.",
   keywords: ["Resume Evaluator", "ATS Checker", "AI Recruiter", "Resume Score", "Interview Preparation", "Software Engineer Resume"],
+  icons: {
+    icon: "/icon.jpg",
+    shortcut: "/icon.jpg",
+    apple: "/icon.jpg",
+  },
 };
 
 export default function RootLayout({
