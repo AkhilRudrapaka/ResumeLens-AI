@@ -21,6 +21,7 @@ import { UserHistoryModal } from "@/components/UserHistoryModal";
 import { AdminDashboardModal } from "@/components/AdminDashboardModal";
 
 import { evaluateResumeClient } from "@/utils/mockEvaluator";
+import { API_BASE_URL } from "@/utils/api";
 import { EvaluationReport } from "@/types";
 import { Download, FileJson, FileText, Printer, ArrowLeft, Sparkles, RefreshCw } from "lucide-react";
 
@@ -45,7 +46,7 @@ export default function Home() {
         formData.append("target_role", selectedRole);
         formData.append("job_description", jobDescription || "");
 
-        const res = await fetch("http://localhost:8000/api/evaluate", {
+        const res = await fetch(`${API_BASE_URL}/api/evaluate`, {
           method: "POST",
           body: formData,
         });
