@@ -71,12 +71,18 @@ export default function Home() {
   };
 
   const handleUploadFile = async (file: File, jobDescription: string) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string || file.name;
-      runAnalysis(text, jobDescription, file);
-    };
-    reader.readAsText(file);
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (ext === "txt") {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = (e.target?.result as string) || file.name;
+        runAnalysis(text, jobDescription, file);
+      };
+      reader.readAsText(file);
+    } else {
+      // Pass PDF/DOCX binary files directly to server-side PyMuPDF document extraction
+      runAnalysis(file.name, jobDescription, file);
+    }
   };
 
   const handleUploadText = (text: string, jobDescription: string) => {

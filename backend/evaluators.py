@@ -387,26 +387,7 @@ class ResumeEvaluatorPipeline:
         detailed_projects = []
 
         if not projects:
-            text_lower = self.raw_text.lower()
-            if "project" in text_lower:
-                fake_project = {
-                    "name": "Featured Engineering Project",
-                    "description": "Uploaded resume references project implementations in text.",
-                    "innovation": 72,
-                    "complexity": 70,
-                    "architecture": 70,
-                    "real_world_impact": 65,
-                    "deployment": 60,
-                    "documentation": 68,
-                    "scalability": 65,
-                    "testing": 60,
-                    "code_quality": 72,
-                    "score": 68
-                }
-                detailed_projects.append(fake_project)
-                total_score = 68
-            else:
-                total_score = 40
+            total_score = 30 if any(w in self.raw_text.lower() for w in ["built", "application", "implemented", "developed", "portfolio"]) else 0
         else:
             for p in projects:
                 name = p.get("name") if isinstance(p, dict) else str(p)
@@ -428,7 +409,7 @@ class ResumeEvaluatorPipeline:
 
                 detailed_projects.append({
                     "name": name,
-                    "description": desc or "Project description extracted from uploaded resume.",
+                    "description": desc or "Project extracted directly from uploaded resume.",
                     "innovation": inn,
                     "complexity": comp,
                     "architecture": arch,

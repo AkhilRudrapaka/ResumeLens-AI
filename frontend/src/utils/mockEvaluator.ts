@@ -189,40 +189,54 @@ export function evaluateResumeClient(
     Math.max(30, Math.round((matchedReq.length / Math.max(1, required.length)) * 75 + (matchedPref.length / Math.max(1, preferred.length)) * 25))
   );
 
-  // Extract project metrics directly from uploaded text
-  const projIndex = textLower.indexOf("project");
-  const detailedProjects = [
-    {
-      name: projIndex !== -1 ? "Primary Engineering Implementation" : "Technical Application & Architecture",
-      description: "Extracted project implementation from uploaded resume document.",
-      innovation: 78,
-      complexity: 82,
-      architecture: 80,
-      real_world_impact: 75,
-      deployment: textLower.includes("docker") || textLower.includes("aws") ? 85 : 62,
-      documentation: 78,
-      scalability: 76,
-      testing: textLower.includes("test") ? 80 : 58,
-      code_quality: 80,
-      score: textLower.includes("docker") ? 82 : 74
+  // Extract project entries dynamically from uploaded text
+  const projHeaderMatch = text.match(/(?:projects?|portfolio|built|applications|key implementations)[\s\S]*?(?=\n\n[A-Z\s]{4,}|\n[A-Z\s]{4,}|$)/i);
+  const detailedProjects: any[] = [];
+  if (projHeaderMatch) {
+    const projBlock = projHeaderMatch[0];
+    const projLines = projBlock.split("\n").map(l => l.trim()).filter(l => l.length > 10).slice(1, 4);
+    for (let i = 0; i < projLines.length; i++) {
+      const pLine = projLines[i];
+      const hasCloud = textLower.includes("docker") || textLower.includes("aws") || textLower.includes("cloud");
+      detailedProjects.push({
+        name: pLine.slice(0, 50),
+        description: `Extracted project from uploaded resume: ${pLine.slice(0, 100)}`,
+        innovation: hasCloud ? 82 : 72,
+        complexity: pLine.length > 50 ? 84 : 70,
+        architecture: 78,
+        real_world_impact: 75,
+        deployment: hasCloud ? 85 : 60,
+        documentation: 75,
+        scalability: 74,
+        testing: textLower.includes("test") ? 80 : 55,
+        code_quality: 78,
+        score: Math.min(95, Math.max(40, Math.round(matchedReq.length * 12 + (hasCloud ? 20 : 0) + 45)))
+      });
     }
-  ];
+  }
 
-  const projectScore = detailedProjects[0].score;
+  const projectScore = detailedProjects.length > 0
+    ? Math.round(detailedProjects.reduce((acc, p) => acc + p.score, 0) / detailedProjects.length)
+    : (textLower.includes("built") || textLower.includes("implemented") ? 45 : 0);
 
-  // Work Experience score
+  // Work Experience score dynamically derived from parsed roles & keywords
   const hasWork = textLower.includes("experience") || textLower.includes("work") || textLower.includes("employment") || textLower.includes("intern");
-  const expScore = hasWork ? 80 : 62;
+  const expScore = hasWork ? Math.min(95, 60 + matchedReq.length * 5) : 35;
 
   // Quantifiable metrics strictly parsed from document
   const metricsMatches = text.match(/(\d+%\s*|\$\d+|\d+\+?\s*(users|requests|downloads|stars|reduction|improvement|ms|seconds))/gi);
-  const achScore = metricsMatches ? Math.min(100, 55 + metricsMatches.length * 10) : 60;
+  const achScore = metricsMatches ? Math.min(100, 50 + metricsMatches.length * 10) : 40;
 
-  // Education score
+  // Education score dynamically derived
   const hasEdu = textLower.includes("education") || textLower.includes("computer science") || textLower.includes("bachelor") || textLower.includes("degree") || textLower.includes("b.tech");
-  const eduScore = hasEdu ? 88 : 72;
+  const eduScore = hasEdu ? 85 : 50;
 
-  const qualityScore = text.length > 500 ? 88 : 72;
+  const qualityScore = Math.min(95, Math.max(40, Math.round(text.length / 25)));
+
+  // Certifications dynamically parsed
+  const certMatch = text.match(/(?:certificat\w*|awards?|honors?|licenses?|achievements?)/i);
+  const certScore = certMatch ? 85 : 40;
+  const cert_w = certScore * 0.02;
 
   // Final Aggregator weighted calculation
   const tech_w = techScore * 0.25;
@@ -233,7 +247,6 @@ export function evaluateResumeClient(
   const qual_w = qualityScore * 0.05;
   const ach_w = achScore * 0.05;
   const edu_w = eduScore * 0.03;
-  const cert_w = 75 * 0.02;
 
   const resumeScore = Math.min(100, Math.max(30, Math.round(tech_w + proj_w + exp_w + ats_w + role_w + qual_w + ach_w + edu_w + cert_w)));
 

@@ -60,7 +60,7 @@ def parse_resume_text_to_json(text: str) -> Dict[str, Any]:
     website_match = re.search(r"(https?://[^\s]+)", text)
     website = website_match.group(0) if website_match and "linkedin" not in website_match.group(0) and "github" not in website_match.group(0) else ""
 
-    # Parse skills from uploaded text strictly
+    # Parse skills dynamically from uploaded text
     skills = []
     text_lower = text.lower()
     known_skills = [
@@ -68,51 +68,65 @@ def parse_resume_text_to_json(text: str) -> Dict[str, Any]:
         "FastAPI", "Django", "Flask", "Spring Boot", "C++", "C#", "Go", "Rust", "SQL", "PostgreSQL",
         "MySQL", "MongoDB", "Redis", "Docker", "Kubernetes", "AWS", "GCP", "Azure", "Terraform",
         "Git", "REST APIs", "GraphQL", "Tailwind CSS", "HTML", "CSS", "PyTorch", "TensorFlow",
-        "Scikit-Learn", "Pandas", "NumPy", "LangChain", "RAG", "LLMs", "Cypress", "Jest", "PyTest"
+        "Scikit-Learn", "Pandas", "NumPy", "LangChain", "RAG", "LLMs", "Cypress", "Jest", "PyTest",
+        "System Design", "Microservices", "CI/CD", "Kafka", "Elasticsearch", "Linux", "Bash"
     ]
     for sk in known_skills:
-        if sk.lower() in text_lower:
+        if re.search(r"\b" + re.escape(sk.lower()) + r"\b", text_lower):
             skills.append(sk)
 
-    # Parse projects from uploaded text strictly
+    # Dynamic project extraction across header synonyms
     projects = []
-    proj_idx = text_lower.find("project")
-    if proj_idx != -1:
+    proj_match = re.search(r"(?:projects?|portfolio|built|applications|key implementations)\b", text_lower)
+    if proj_match:
+        proj_idx = proj_match.start()
         proj_text = text[proj_idx:proj_idx + 1500]
-        proj_lines = [l for l in proj_text.split("\n") if len(l) > 10][:6]
+        proj_lines = [l.strip() for l in proj_text.split("\n") if len(l.strip()) > 10][:6]
         if proj_lines:
             projects.append({
-                "name": proj_lines[0][:50],
+                "name": proj_lines[0][:60],
                 "description": " ".join(proj_lines[1:3]),
                 "highlights": proj_lines[3:5]
             })
 
-    # Parse work / experience from uploaded text strictly
+    # Dynamic work/experience extraction across header synonyms
     work = []
-    exp_idx = max(text_lower.find("experience"), text_lower.find("work"), text_lower.find("employment"))
-    if exp_idx != -1:
+    exp_match = re.search(r"(?:experience|work|employment|career|internships?|positions?)\b", text_lower)
+    if exp_match:
+        exp_idx = exp_match.start()
         exp_text = text[exp_idx:exp_idx + 1500]
-        exp_lines = [l for l in exp_text.split("\n") if len(l) > 10][:6]
+        exp_lines = [l.strip() for l in exp_text.split("\n") if len(l.strip()) > 10][:6]
         if exp_lines:
             work.append({
-                "company": exp_lines[0][:50],
+                "company": exp_lines[0][:60],
                 "position": "Role / Contributor",
                 "summary": " ".join(exp_lines[1:4]),
                 "highlights": exp_lines[4:6]
             })
 
-    # Parse education from uploaded text strictly
+    # Dynamic education extraction across header synonyms
     education = []
-    edu_idx = text_lower.find("education")
-    if edu_idx != -1:
+    edu_match = re.search(r"(?:education|academics?|qualifications?|degrees?|university|college)\b", text_lower)
+    if edu_match:
+        edu_idx = edu_match.start()
         edu_text = text[edu_idx:edu_idx + 500]
-        edu_lines = [l for l in edu_text.split("\n") if len(l) > 5][:4]
+        edu_lines = [l.strip() for l in edu_text.split("\n") if len(l.strip()) > 5][:4]
         if edu_lines:
             education.append({
                 "institution": edu_lines[0][:60],
-                "area": "STEM / Field of Study",
-                "studyType": "Degree"
+                "area": "Degree / Field of Study",
+                "studyType": "Parsed Education Entry"
             })
+
+    # Dynamic awards/certifications parsing
+    awards = []
+    cert_match = re.search(r"(?:certificat\w*|awards?|honors?|licenses?|achievements?)\b", text_lower)
+    if cert_match:
+        cert_idx = cert_match.start()
+        cert_text = text[cert_idx:cert_idx + 500]
+        cert_lines = [l.strip() for l in cert_text.split("\n") if len(l.strip()) > 5][:3]
+        for cl in cert_lines:
+            awards.append({"title": cl[:60], "summary": cl})
 
     return {
         "basics": {
@@ -122,12 +136,12 @@ def parse_resume_text_to_json(text: str) -> Dict[str, Any]:
             "linkedin": linkedin,
             "github": github,
             "website": website,
-            "summary": text[:250] + "..." if len(text) > 250 else text
+            "summary": text[:300] + "..." if len(text) > 300 else text
         },
         "work": work,
         "education": education,
         "projects": projects,
         "skills": skills,
-        "awards": [],
+        "awards": awards,
         "publications": []
     }
