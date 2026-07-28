@@ -13,20 +13,37 @@ from backend.roles_db import get_role_list, get_role_profile, ROLES_DATABASE
 from backend.parser import extract_text_from_file, parse_resume_text_to_json
 from backend.evaluators import ResumeEvaluatorPipeline
 
+import os
+import time
+
+# Security & CORS configuration
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "resumelens-admin-secret-2026")
+
 app = FastAPI(
     title="ResumeLens AI API",
     description="AI-Powered Recruiter & ATS Resume Evaluation Engine",
     version="1.0.0"
 )
 
-# Enable CORS for Next.js frontend
+# CORS middleware with configurable origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Global Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 EVALUATION_HISTORY: List[Dict[str, Any]] = []
 
@@ -40,6 +57,17 @@ class CompareRequest(BaseModel):
     resume_text_b: str
     target_role: str
     job_description: Optional[str] = ""
+
+from fastapi import Header
+
+MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5MB Max File Size limit
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+
+def verify_admin_access(x_admin_key: Optional[str] = Header(None)):
+    """Verifies admin key header for sensitive endpoints."""
+    if os.getenv("ENABLE_ADMIN_AUTH", "false").lower() == "true":
+        if not x_admin_key or x_admin_key != ADMIN_SECRET_KEY:
+            raise HTTPException(status_code=403, detail="Unauthorized access to administrative endpoint.")
 
 @app.get("/api/health")
 def health_check():
@@ -68,10 +96,26 @@ async def evaluate_resume(
 
     if file:
         filename = file.filename or "Uploaded_Resume.pdf"
+        ext = os.path.splitext(filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file format. Please upload one of: {', '.join(ALLOWED_EXTENSIONS)}"
+            )
+
         file_bytes = await file.read()
+        if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="File size exceeds maximum allowed limit of 5MB."
+            )
+
         extracted_text = extract_text_from_file(file_bytes, filename)
     elif resume_text:
         extracted_text = resume_text
+
+    # Cap text length to prevent memory exhaustion / DoS
+    extracted_text = extracted_text[:50000]
 
     if not extracted_text or len(extracted_text.strip()) < 30:
         raise HTTPException(
@@ -102,8 +146,9 @@ async def evaluate_resume(
 
 @app.post("/api/evaluate/text")
 def evaluate_resume_text(req: TextEvaluateRequest):
-    parsed_json = parse_resume_text_to_json(req.resume_text)
-    pipeline = ResumeEvaluatorPipeline(req.resume_text, parsed_json, req.target_role, req.job_description or "")
+    truncated_text = (req.resume_text or "")[:50000]
+    parsed_json = parse_resume_text_to_json(truncated_text)
+    pipeline = ResumeEvaluatorPipeline(truncated_text, parsed_json, req.target_role, req.job_description or "")
     report = pipeline.run_all_evaluators()
     report["filename"] = "Uploaded_Resume.txt"
     report["timestamp"] = time.time()
@@ -111,12 +156,15 @@ def evaluate_resume_text(req: TextEvaluateRequest):
 
 @app.post("/api/compare")
 def compare_resumes(req: CompareRequest):
-    parsed_a = parse_resume_text_to_json(req.resume_text_a)
-    pipeline_a = ResumeEvaluatorPipeline(req.resume_text_a, parsed_a, req.target_role, req.job_description or "")
+    text_a = (req.resume_text_a or "")[:50000]
+    text_b = (req.resume_text_b or "")[:50000]
+
+    parsed_a = parse_resume_text_to_json(text_a)
+    pipeline_a = ResumeEvaluatorPipeline(text_a, parsed_a, req.target_role, req.job_description or "")
     report_a = pipeline_a.run_all_evaluators()
 
-    parsed_b = parse_resume_text_to_json(req.resume_text_b)
-    pipeline_b = ResumeEvaluatorPipeline(req.resume_text_b, parsed_b, req.target_role, req.job_description or "")
+    parsed_b = parse_resume_text_to_json(text_b)
+    pipeline_b = ResumeEvaluatorPipeline(text_b, parsed_b, req.target_role, req.job_description or "")
     report_b = pipeline_b.run_all_evaluators()
 
     score_delta = report_b["overall_scores"]["resume_score"] - report_a["overall_scores"]["resume_score"]
@@ -136,11 +184,13 @@ def compare_resumes(req: CompareRequest):
     }
 
 @app.get("/api/history")
-def get_history():
+def get_history(x_admin_key: Optional[str] = Header(None)):
+    verify_admin_access(x_admin_key)
     return {"history": EVALUATION_HISTORY[::-1]}
 
 @app.get("/api/admin/stats")
-def get_admin_stats():
+def get_admin_stats(x_admin_key: Optional[str] = Header(None)):
+    verify_admin_access(x_admin_key)
     total_evals = max(24, len(EVALUATION_HISTORY))
     avg_score = round(sum(item.get("resume_score", 78) for item in EVALUATION_HISTORY) / len(EVALUATION_HISTORY)) if EVALUATION_HISTORY else 78
     avg_ats = round(sum(item.get("ats_score", 86) for item in EVALUATION_HISTORY) / len(EVALUATION_HISTORY)) if EVALUATION_HISTORY else 86
