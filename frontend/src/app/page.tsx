@@ -55,19 +55,44 @@ export default function Home() {
           const data = await res.json();
           setReport(data);
           setHistory((prev) => [data, ...prev]);
+          setIsAnalyzing(false);
+          return;
+        }
+      } else {
+        // Send JSON request to backend /api/evaluate/text endpoint
+        const res = await fetch(`${API_BASE_URL}/api/evaluate/text`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            resume_text: text,
+            target_role: selectedRole,
+            job_description: jobDescription || "",
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setReport(data);
+          setHistory((prev) => [data, ...prev]);
+          setIsAnalyzing(false);
           return;
         }
       }
     } catch (err) {
-      console.log("Backend offline, running strict client evaluator fallback.");
+      console.log("Backend offline, running strict client evaluator fallback.", err);
     }
 
-    // Client fallback evaluation with Job Description
-    const clientReport = evaluateResumeClient(text, selectedRole, jobDescription);
-    if (file) clientReport.filename = file.name;
-    
-    setReport(clientReport);
-    setHistory((prev) => [clientReport, ...prev]);
+    // Client fallback evaluation ONLY if text is valid resume content (length > 30)
+    if (text && text.trim().length > 30) {
+      const clientReport = evaluateResumeClient(text, selectedRole, jobDescription);
+      if (file) clientReport.filename = file.name;
+      
+      setReport(clientReport);
+      setHistory((prev) => [clientReport, ...prev]);
+    } else {
+      console.error("Evaluation failed: Invalid or missing resume text.");
+    }
+    setIsAnalyzing(false);
   };
 
   const handleUploadFile = async (file: File, jobDescription: string) => {
